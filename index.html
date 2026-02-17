@@ -1,0 +1,174 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<title>地理お助けツール 完全強化版</title>
+
+<link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css"/>
+<script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
+
+<style>
+body{
+    margin:0;
+    display:flex;
+    height:100vh;
+    background:#111;
+    color:white;
+    font-family:Arial;
+}
+#sidebar{
+    width:230px;
+    background:#1a1a1a;
+    padding:15px;
+}
+.modeBtn{
+    width:100%;
+    padding:10px;
+    margin:8px 0;
+    background:#222;
+    border:none;
+    color:white;
+    cursor:pointer;
+}
+.modeBtn:hover{ background:#333; }
+
+#main{
+    flex:1;
+    display:flex;
+    flex-direction:column;
+    padding:15px;
+}
+#map{ flex:1; }
+
+input,button{
+    padding:8px;
+    margin:5px;
+}
+
+</style>
+</head>
+
+<body>
+
+<div id="sidebar">
+    <button class="modeBtn" onclick="setMode('country')">国検索</button>
+</div>
+
+<div id="main">
+    <div id="controls"></div>
+    <div id="result"></div>
+    <div id="map"></div>
+</div>
+
+<script>
+
+let map = L.map('map').setView([20,0],2);
+let marker=null;
+
+L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
+
+/* 日本語別名 */
+const aliasMap = {
+    "アメリカ":"USA",
+    "米国":"USA",
+    "イギリス":"GBR",
+    "英国":"GBR",
+    "韓国":"KOR",
+    "北朝鮮":"PRK",
+    "ロシア":"RUS",
+    "中国":"CHN",
+    "ドイツ":"DEU",
+    "フランス":"FRA",
+    "日本":"JPN",
+    "インド":"IND",
+    "ブラジル":"BRA",
+    "カナダ":"CAN",
+    "オーストラリア":"AUS"
+};
+
+/* 州数データ（主要国のみ） */
+const stateCount = {
+    "USA":50,
+    "AUS":6,
+    "IND":28,
+    "BRA":26,
+    "DEU":16,
+    "CAN":10
+};
+
+function setMode(){
+    document.getElementById("controls").innerHTML=`
+        <input id="countryInput" placeholder="国名（日本語OK）">
+        <button onclick="searchCountry()">検索</button>
+        <button onclick="randomCountry()">ランダム</button>
+    `;
+}
+setMode();
+
+/* 国検索 */
+async function searchCountry(){
+
+    let input=document.getElementById("countryInput").value.trim();
+    if(!input) return;
+
+    let code=input.toUpperCase();
+
+    if(aliasMap[input]){
+        code=aliasMap[input];
+    }
+
+    try{
+        let res = await fetch(`https://restcountries.com/v3.1/alpha/${code}`);
+        if(!res.ok){
+            res = await fetch(`https://restcountries.com/v3.1/name/${input}`);
+        }
+        let data = await res.json();
+        let country=data[0];
+        showCountry(country);
+    }catch{
+        document.getElementById("result").innerHTML="見つかりません";
+    }
+}
+
+/* ランダム */
+async function randomCountry(){
+    let res=await fetch("https://restcountries.com/v3.1/all");
+    let data=await res.json();
+    let random=data[Math.floor(Math.random()*data.length)];
+    showCountry(random);
+}
+
+/* 表示 */
+async function showCountry(c){
+
+    if(marker) map.removeLayer(marker);
+
+    map.setView(c.latlng,5);
+    marker=L.marker(c.latlng).addTo(map);
+
+    /* GDP取得 */
+    let gdp="不明";
+    try{
+        let gdpRes=await fetch(`https://api.worldbank.org/v2/country/${c.cca3}/indicator/NY.GDP.MKTP.CD?format=json&per_page=1`);
+        let gdpData=await gdpRes.json();
+        if(gdpData[1] && gdpData[1][0].value){
+            gdp=gdpData[1][0].value.toLocaleString()+" USD";
+        }
+    }catch{}
+
+    let states=stateCount[c.cca3] ? stateCount[c.cca3]+" 州" : "情報なし";
+
+    document.getElementById("result").innerHTML=`
+        <h2>${c.name.common}</h2>
+        <img src="${c.flags.png}" width="120">
+        <p>首都: ${c.capital ? c.capital[0]:"なし"}</p>
+        <p>人口: ${c.population.toLocaleString()}</p>
+        <p>面積: ${c.area.toLocaleString()} km²</p>
+        <p>GDP: ${gdp}</p>
+        <p>州数: ${states}</p>
+    `;
+}
+
+</script>
+</body>
+</html>
